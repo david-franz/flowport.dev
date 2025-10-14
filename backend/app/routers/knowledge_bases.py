@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from starlette import status
 
 from ..deps import get_knowledge_base_manager
@@ -65,6 +66,23 @@ async def get_knowledge_document(
         return manager.get_document(kb_id, doc_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{kb_id}/documents/{doc_id}/file")
+async def download_knowledge_document(
+    kb_id: str,
+    doc_id: str,
+    manager: KnowledgeBaseManager = Depends(get_knowledge_base_manager),
+) -> FileResponse:
+    """Stream the original file associated with a knowledge document."""
+
+    try:
+        path, media_type, original_filename = manager.get_document_file(kb_id, doc_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    filename = original_filename or path.name
+    return FileResponse(path, media_type=media_type, filename=filename)
 
 
 @router.post("/{kb_id}/ingest/text", response_model=KnowledgeDocument, status_code=status.HTTP_201_CREATED)

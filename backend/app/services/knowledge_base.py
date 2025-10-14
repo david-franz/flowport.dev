@@ -78,6 +78,43 @@ class KnowledgeBaseManager:
 
     def get_document(self, kb_id: str, doc_id: str) -> KnowledgeDocumentDetail:
         metadata = self._load_metadata(kb_id)
+        document_entry: dict[str, Any] | None = None
+        for entry in metadata.get("documents", []):
+            if entry.get("id") == doc_id:
+                document_entry = entry
+                break
+        if not document_entry:
+            raise FileNotFoundError(f"Document '{doc_id}' not found in knowledge base '{kb_id}'")
+
+        base_document = self._document_from_metadata_entry(document_entry)
+        chunks: list[KnowledgeDocumentChunk] = []
+        for chunk_id in document_entry.get("chunk_ids", []):
+            try:
+                content = self._read_chunk(kb_id, chunk_id)
+            except FileNotFoundError:
+                continue
+            chunks.append(KnowledgeDocumentChunk(id=chunk_id, content=content))
+
+        return KnowledgeDocumentDetail(**base_document.model_dump(), chunks=chunks)
+
+    def get_document_file(self, kb_id: str, doc_id: str) -> tuple[Path, str, str | None]:
+        metadata = self._load_metadata(kb_id)
+        for entry in metadata.get("documents", []):
+            if entry.get("id") != doc_id:
+                continue
+            stored_filename = entry.get("stored_filename")
+            if not stored_filename:
+                raise FileNotFoundError("Document has no stored file")
+            file_path = self._files_dir(kb_id) / stored_filename
+            if not file_path.exists():
+                raise FileNotFoundError("Document file is missing from storage")
+            media_type = entry.get("media_type", "application/octet-stream")
+            original_filename = entry.get("original_filename")
+            return file_path, media_type, original_filename
+        raise FileNotFoundError(f"Document '{doc_id}' not found in knowledge base '{kb_id}'")
+
+    def get_document(self, kb_id: str, doc_id: str) -> KnowledgeDocumentDetail:
+        metadata = self._load_metadata(kb_id)
         document_entry = None
         for entry in metadata.get("documents", []):
             if entry.get("id") == doc_id:
@@ -276,9 +313,11 @@ class KnowledgeBaseManager:
 
         files_dir = self._files_dir(kb_id)
         files_dir.mkdir(exist_ok=True)
+        stored_filename: str | None = None
         if original_filename:
             safe_name = f"{doc_id}_{Path(original_filename).name}"
             (files_dir / safe_name).write_bytes(raw_bytes)
+            stored_filename = safe_name
 
         metadata_entry = {
             "id": doc_id,
@@ -290,6 +329,7 @@ class KnowledgeBaseManager:
             "chunk_count": len(chunk_ids),
             "created_at": now.isoformat(),
             "metadata": metadata,
+            "stored_filename": stored_filename,
         }
 
         self._update_metadata(kb_id, metadata_entry)
@@ -373,6 +413,7 @@ class KnowledgeBaseManager:
             chunk_count=int(entry.get("chunk_count", 0)),
             created_at=self._parse_datetime(entry.get("created_at")),
             metadata=entry.get("metadata", {}),
+            file_available=bool(entry.get("stored_filename")),
         )
 
     def _hydrate_summary(self, kb_id: str) -> KnowledgeBaseSummary:

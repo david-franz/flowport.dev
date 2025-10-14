@@ -74,6 +74,7 @@ class KnowledgeDocument(BaseModel):
     chunk_count: int
     created_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
+    file_available: bool = False
 
 
 class KnowledgeBaseDetail(KnowledgeBaseSummary):

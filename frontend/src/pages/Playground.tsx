@@ -54,6 +54,13 @@ const PROVIDER_DEFAULT_PARAMETERS: ProviderParameters = {
   llama: '{"max_tokens": 512}',
 }
 
+const PROVIDER_KEY_PLACEHOLDERS: Record<Provider, string> = {
+  huggingface: 'hf_xxxxx',
+  openai: 'sk-...',
+  gemini: 'AIzaSy...',
+  llama: 'llama-...',
+}
+
 const API_KEYS_STORAGE = 'flowport:provider-api-keys'
 const WELCOME_MESSAGES: Record<Provider, string> = {
   huggingface: 'Flowport is ready to relay prompts to Hugging Face models. Configure your context and start chatting.',
@@ -310,12 +317,12 @@ export default function Playground() {
     setProvider(next)
   }
 
-  const handleModelChange = (value: string) => {
-    setModels((prev) => ({ ...prev, [provider]: value }))
+  const handleModelChange = (id: Provider, value: string) => {
+    setModels((prev) => ({ ...prev, [id]: value }))
   }
 
-  const handleParametersChange = (value: string) => {
-    setParameters((prev) => ({ ...prev, [provider]: value }))
+  const handleParametersChange = (id: Provider, value: string) => {
+    setParameters((prev) => ({ ...prev, [id]: value }))
   }
 
   const handleApiKeyChange = (id: Provider, value: string) => {
@@ -447,60 +454,95 @@ export default function Playground() {
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowport</span>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Playground</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
                 Configure providers, keys, prompting, and knowledge before generating responses. Settings apply to the current session.
               </p>
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
-              <SidebarSection title="Provider" description="Select a model provider to route through the Flowport gateway.">
-                <div className="grid grid-cols-2 gap-2">
-                  {PROVIDERS.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleProviderSelect(item.id)}
-                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                        provider === item.id
-                          ? 'border-brand-400 bg-brand-500/10 text-brand-800 dark:border-brand-200/50 dark:bg-brand-300/20 dark:text-brand-50'
-                          : 'border-slate-200/80 bg-white/60 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
-                      }`}
-                    >
-                      {item.name}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-3 text-xs text-slate-500 leading-relaxed dark:text-slate-300">{currentProviderMeta.description}</p>
-                <a
-                  href={currentProviderMeta.docUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
-                >
-                  Provider docs →
-                </a>
-              </SidebarSection>
-
-              <SidebarSection title="API keys" description="Keys are stored locally in your browser and sent only when calling the Flowport backend.">
+            <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
+              <SidebarSection
+                title="Model providers"
+                description="Pick a provider to drive inference, set its API key, and provide the model identifier the gateway should use."
+              >
                 <div className="space-y-3">
                   {PROVIDERS.map((item) => {
-                    const value = apiKeys[item.id] ?? ''
+                    const active = provider === item.id
+                    const keyValue = apiKeys[item.id] ?? ''
+                    const modelValue = models[item.id] ?? ''
+                    const parameterValue = parameters[item.id] ?? ''
                     return (
-                      <label key={item.id} className="block text-xs font-medium text-slate-500 dark:text-slate-300">
-                        {item.name} key
-                        <input
-                          type="password"
-                          value={value}
-                          onChange={(event) => handleApiKeyChange(item.id, event.target.value)}
-                          placeholder={item.id === 'huggingface' ? 'hf_xxxxx' : 'sk-...'}
-                          className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                        />
-                        <span className="mt-1 block text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                          {value ? 'Stored locally' : 'Not set'}
-                        </span>
-                      </label>
+                      <article
+                        key={item.id}
+                        className={`rounded-2xl border px-4 py-4 text-xs transition dark:text-slate-200 ${
+                          active
+                            ? 'border-brand-400 bg-brand-500/10 shadow-sm dark:border-brand-200/40 dark:bg-brand-300/10'
+                            : 'border-slate-200/70 bg-white/70 dark:border-white/10 dark:bg-slate-900/60'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{item.name}</h3>
+                            <p className="mt-1 text-[11px] text-slate-500 leading-relaxed dark:text-slate-300">{item.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleProviderSelect(item.id)}
+                            className={`rounded-md border px-3 py-1 text-[11px] font-semibold transition ${
+                              active
+                                ? 'border-brand-400 bg-brand-400/20 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/20 dark:text-brand-50'
+                                : 'border-slate-300/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/20 dark:text-slate-200'
+                            }`}
+                          >
+                            {active ? 'Selected' : 'Select'}
+                          </button>
+                        </div>
+                        <div className="mt-3 space-y-3">
+                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                            API key
+                            <input
+                              type="password"
+                              value={keyValue}
+                              onFocus={() => handleProviderSelect(item.id)}
+                              onChange={(event) => handleApiKeyChange(item.id, event.target.value)}
+                              placeholder={PROVIDER_KEY_PLACEHOLDERS[item.id]}
+                              className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                            />
+                            <span className="mt-1 block text-[10px] text-slate-400 dark:text-slate-500">Stored locally in your browser</span>
+                          </label>
+                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                            Model identifier
+                            <input
+                              type="text"
+                              value={modelValue}
+                              onFocus={() => handleProviderSelect(item.id)}
+                              onChange={(event) => handleModelChange(item.id, event.target.value)}
+                              placeholder={PROVIDER_DEFAULT_MODELS[item.id]}
+                              className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                            />
+                          </label>
+                          {active && (
+                            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                              Parameters (JSON)
+                              <textarea
+                                value={parameterValue}
+                                onChange={(event) => handleParametersChange(item.id, event.target.value)}
+                                rows={4}
+                                className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                              />
+                            </label>
+                          )}
+                        </div>
+                        <a
+                          href={item.docUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center gap-2 text-[11px] font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
+                        >
+                          Provider docs →
+                        </a>
+                      </article>
                     )
                   })}
                 </div>
@@ -533,27 +575,6 @@ export default function Playground() {
                     min={1}
                     max={20}
                     onChange={(event) => setTopK(Number(event.target.value) || 1)}
-                    className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                  />
-                </label>
-              </SidebarSection>
-
-              <SidebarSection title="Model & parameters" description="Set the target model and tuned parameters for the selected provider.">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-300">
-                  Model identifier
-                  <input
-                    type="text"
-                    value={currentModel}
-                    onChange={(event) => handleModelChange(event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                  />
-                </label>
-                <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-300">
-                  Parameters (JSON)
-                  <textarea
-                    value={currentParameters}
-                    onChange={(event) => handleParametersChange(event.target.value)}
-                    rows={5}
                     className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
                   />
                 </label>
@@ -614,7 +635,7 @@ export default function Playground() {
         )}
       </aside>
 
-      <section className="flex flex-1 flex-col overflow-hidden px-4 py-6">
+      <section className="flex flex-1 min-h-0 flex-col overflow-hidden px-4 py-6">
         <header className="flex flex-col gap-2 rounded-3xl border border-slate-200/60 bg-white/80 px-6 py-4 shadow-sm dark:border-white/10 dark:bg-slate-950/50">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -636,8 +657,8 @@ export default function Playground() {
           </div>
         </header>
 
-        <div className="mt-4 flex flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-          <div ref={conversationRef} className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="mt-4 flex flex-1 min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+          <div ref={conversationRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
               {messages.map((message, index) => (
                 <article
@@ -710,7 +731,7 @@ export default function Playground() {
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowport</span>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Inspector</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">

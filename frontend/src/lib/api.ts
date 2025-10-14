@@ -9,6 +9,7 @@ export interface KnowledgeDocument {
   chunk_count: number
   created_at: string
   metadata: Record<string, unknown>
+  file_available: boolean
 }
 
 export interface KnowledgeBaseSummary {
