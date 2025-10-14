@@ -14,6 +14,7 @@ from ..models.knowledge_base import (
     KnowledgeBaseQueryResponse,
     KnowledgeBaseSummary,
     KnowledgeDocument,
+    KnowledgeDocumentDetail,
     TextIngestRequest,
 )
 from ..services.knowledge_base import KnowledgeBaseManager
@@ -48,6 +49,20 @@ async def get_knowledge_base(kb_id: str, manager: KnowledgeBaseManager = Depends
 
     try:
         return manager.get_knowledge_base(kb_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/{kb_id}/documents/{doc_id}", response_model=KnowledgeDocumentDetail)
+async def get_knowledge_document(
+    kb_id: str,
+    doc_id: str,
+    manager: KnowledgeBaseManager = Depends(get_knowledge_base_manager),
+) -> KnowledgeDocumentDetail:
+    """Return detailed information about a knowledge document including its chunks."""
+
+    try:
+        return manager.get_document(kb_id, doc_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

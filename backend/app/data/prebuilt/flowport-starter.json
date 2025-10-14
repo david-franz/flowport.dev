@@ -20,6 +20,12 @@
       "content": "Users can upload raw files such as TXT, CSV, PDF, PNG, and JPEG assets, attach prebuilt Flowtomic knowledge packs, or generate a new RAG database on the fly by submitting structured knowledge entries. Flowport normalizes each source into rich semantic chunks that are ready for retrieval at inference time.",
       "chunk_size": 700,
       "chunk_overlap": 40
+    },
+    {
+      "title": "Flowport + Flowknow",
+      "content": "Flowport pairs naturally with Flowknow. Teams curate files and briefs inside Flowknow, which automatically builds the vector indexes that Flowport references by knowledge_base_id. This default knowledge pack includes highlights from both products so you can attach it to any model and immediately demonstrate retrieval-augmented answers about the Flowtomic stack.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
     }
   ]
 }

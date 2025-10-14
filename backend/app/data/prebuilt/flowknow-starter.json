@@ -1,0 +1,25 @@
+{
+  "id": "flowknow-starter",
+  "name": "Flowknow Starter Pack",
+  "description": "Overview of Flowknow and how it powers retrieval for Flowport experiences.",
+  "knowledge_items": [
+    {
+      "title": "Flowknow Overview",
+      "content": "Flowknow is Flowtomic's decoupled knowledge layer. Teams ingest files, transcripts, and structured notes into Flowknow to produce vector-ready retrieval databases that any Flowport deployment can query. Once knowledge is published in Flowknow, it becomes immediately available to Flowport for RAG orchestration.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
+    },
+    {
+      "title": "Supported Formats",
+      "content": "Flowknow supports ingesting text, Markdown, CSV, PDF, PNG, and JPEG files. Text entries can be pasted directly or generated automatically from structured notes. Image files can be captioned via Hugging Face-hosted vision models when an API key is supplied, ensuring every asset is converted into searchable context.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
+    },
+    {
+      "title": "Retrieval Workflow",
+      "content": "Each document ingested into Flowknow is normalized, chunked, and indexed. Flowport requests relevant chunks by referencing a knowledge_base_id at inference time. The shared storage format means Flowknow knowledge can drive Flowgraph automations, Flowform experiences, and Flowlang agents without rebuilding embeddings or pipelines.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
+    }
+  ]
+}

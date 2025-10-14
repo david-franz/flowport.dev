@@ -1,0 +1,61 @@
+{
+  "id": "flowknow-starter",
+  "name": "Flowknow Starter Pack",
+  "description": "Overview of Flowknow and how it powers retrieval for Flowport experiences.",
+  "source": "prebuilt",
+  "created_at": "2025-10-14T12:11:59.780171+00:00",
+  "updated_at": "2025-10-14T12:11:59.816879+00:00",
+  "documents": [
+    {
+      "id": "3d2860b9-d0bb-4797-aa6a-7c4a85346084",
+      "title": "Flowknow Overview",
+      "original_filename": null,
+      "media_type": "text/plain",
+      "size_bytes": 311,
+      "chunk_ids": [
+        "ccd7b3c4-ef8d-4bb4-bcef-906fbe88ed9c"
+      ],
+      "chunk_count": 1,
+      "created_at": "2025-10-14T12:11:59.783430+00:00",
+      "metadata": {
+        "prebuilt": true,
+        "source_file": "flowknow-starter.json"
+      }
+    },
+    {
+      "id": "37c36e5c-55a5-4b0e-b6ce-078a868edc42",
+      "title": "Supported Formats",
+      "original_filename": null,
+      "media_type": "text/plain",
+      "size_bytes": 315,
+      "chunk_ids": [
+        "4262ad5a-5cb0-4524-9ef2-45f6367c0db2"
+      ],
+      "chunk_count": 1,
+      "created_at": "2025-10-14T12:11:59.796583+00:00",
+      "metadata": {
+        "prebuilt": true,
+        "source_file": "flowknow-starter.json"
+      }
+    },
+    {
+      "id": "92cbdd97-af6f-45b6-8016-dad2fa82e440",
+      "title": "Retrieval Workflow",
+      "original_filename": null,
+      "media_type": "text/plain",
+      "size_bytes": 331,
+      "chunk_ids": [
+        "2e1204a2-a5a1-4e10-88f2-b0d9a31cb8bd"
+      ],
+      "chunk_count": 1,
+      "created_at": "2025-10-14T12:11:59.803825+00:00",
+      "metadata": {
+        "prebuilt": true,
+        "source_file": "flowknow-starter.json"
+      }
+    }
+  ],
+  "chunk_count": 3,
+  "ready": true,
+  "document_count": 3
+}

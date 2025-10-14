@@ -24,6 +24,8 @@ from ..models.knowledge_base import (
     KnowledgeBaseSummary,
     KnowledgeChunkMatch,
     KnowledgeDocument,
+    KnowledgeDocumentDetail,
+    KnowledgeDocumentChunk,
     TextIngestRequest,
 )
 from ..utils.text import chunk_text, normalize_text, truncate
@@ -73,6 +75,28 @@ class KnowledgeBaseManager:
             ready=metadata.get("ready", False),
             documents=documents,
         )
+
+    def get_document(self, kb_id: str, doc_id: str) -> KnowledgeDocumentDetail:
+        metadata = self._load_metadata(kb_id)
+        document_entry = None
+        for entry in metadata.get("documents", []):
+            if entry.get("id") == doc_id:
+                document_entry = entry
+                break
+        if not document_entry:
+            raise FileNotFoundError(f"Document '{doc_id}' not found in knowledge base '{kb_id}'")
+
+        base_document = self._document_from_metadata_entry(document_entry)
+        chunk_ids = document_entry.get("chunk_ids", [])
+        chunks: list[KnowledgeDocumentChunk] = []
+        for chunk_id in chunk_ids:
+            try:
+                content = self._read_chunk(kb_id, chunk_id)
+            except FileNotFoundError:
+                continue
+            chunks.append(KnowledgeDocumentChunk(id=chunk_id, content=content))
+
+        return KnowledgeDocumentDetail(**base_document.model_dump(), chunks=chunks)
 
     def create_knowledge_base(
         self,
@@ -366,7 +390,7 @@ class KnowledgeBaseManager:
         )
 
     def _iter_kb_dirs(self) -> list[str]:
-        return [p.name for p in self.storage_dir.iterdir() if p.is_dir() and (p / "metadata.json").exists()]
+        return sorted(p.name for p in self.storage_dir.iterdir() if p.is_dir() and (p / "metadata.json").exists())
 
     def _metadata_path(self, kb_id: str) -> Path:
         return self.storage_dir / kb_id / "metadata.json"

@@ -82,6 +82,19 @@ class KnowledgeBaseDetail(KnowledgeBaseSummary):
     documents: list[KnowledgeDocument] = Field(default_factory=list)
 
 
+class KnowledgeDocumentChunk(BaseModel):
+    """Individual chunk belonging to a knowledge document."""
+
+    id: str
+    content: str
+
+
+class KnowledgeDocumentDetail(KnowledgeDocument):
+    """Knowledge document with its chunk contents."""
+
+    chunks: list[KnowledgeDocumentChunk] = Field(default_factory=list)
+
+
 class KnowledgeChunkMatch(BaseModel):
     """A relevant knowledge chunk returned from retrieval."""
 
