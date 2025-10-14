@@ -1,0 +1,25 @@
+{
+  "id": "flowport-starter",
+  "name": "Flowport Starter Pack",
+  "description": "Key concepts and positioning for Flowport, the Flowtomic gateway to Hugging Face models.",
+  "knowledge_items": [
+    {
+      "title": "Flowport Overview",
+      "content": "Flowport is an inference and retrieval orchestration gateway that connects Flowtomic applications to any hosted model on Hugging Face. It combines API gateway patterns with retrieval augmented generation (RAG) workflows so teams can bring their existing knowledge into new GenAI products without rebuilding infrastructure.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
+    },
+    {
+      "title": "Key Features",
+      "content": "Flowport focuses on three pillars: easy model connectivity, flexible augmentation, and production safety. Any Hugging Face model can be invoked through a simple API that understands Flowtomic credentials. Augmentation can pull from ad-hoc files, curated knowledge bases, or automatically built document collections. Observability, throttling, and auditing are built in to help teams ship production-ready experiences quickly.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
+    },
+    {
+      "title": "Supported Knowledge Sources",
+      "content": "Users can upload raw files such as TXT, CSV, PDF, PNG, and JPEG assets, attach prebuilt Flowtomic knowledge packs, or generate a new RAG database on the fly by submitting structured knowledge entries. Flowport normalizes each source into rich semantic chunks that are ready for retrieval at inference time.",
+      "chunk_size": 700,
+      "chunk_overlap": 40
+    }
+  ]
+}
