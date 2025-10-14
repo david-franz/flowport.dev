@@ -240,11 +240,11 @@ export function InferencePlayground({
   }
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-slate-900/40 p-6 md:p-8">
+    <section className="rounded-3xl border border-slate-200/60 bg-white/80 p-6 md:p-8 dark:border-white/10 dark:bg-slate-900/40">
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h3 className="text-xl font-semibold text-white">Inference Gateway</h3>
-          <p className="text-sm text-slate-300">
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Inference Gateway</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Provide your Hugging Face credentials, choose a model, and optionally attach a knowledge base for RAG-augmented answers.
           </p>
         </div>
@@ -252,7 +252,7 @@ export function InferencePlayground({
           href="https://huggingface.co/settings/tokens"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
+          className="inline-flex items-center gap-2 rounded-md border border-slate-300/60 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100/60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
         >
           Get a Hugging Face key
         </a>
@@ -268,36 +268,36 @@ export function InferencePlayground({
         >
           {loading ? 'Running inference…' : 'Run inference'}
         </button>
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
       </div>
 
       {response && (
         <div className="mt-8 grid gap-6">
           <div>
-            <h4 className="text-lg font-semibold text-white">Model response</h4>
-            <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-950/60 p-4 text-xs text-slate-200 border border-white/10">
+            <h4 className="text-lg font-semibold text-slate-900 dark:text-white">Model response</h4>
+            <pre className="mt-3 overflow-x-auto rounded-xl border border-slate-200/60 bg-slate-100/80 p-4 text-xs text-slate-700 dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-200">
               {JSON.stringify(response.payload, null, 2)}
             </pre>
           </div>
           {response.context && (
             <div>
-              <h4 className="text-lg font-semibold text-white">Injected context</h4>
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-950/60 p-4 text-xs text-slate-200 border border-white/10">
+              <h4 className="text-lg font-semibold text-slate-900 dark:text-white">Injected context</h4>
+              <pre className="mt-3 overflow-x-auto rounded-xl border border-slate-200/60 bg-slate-100/80 p-4 text-xs text-slate-700 dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-200">
                 {response.context}
               </pre>
             </div>
           )}
           {response.knowledge_hits.length > 0 && (
             <div>
-              <h4 className="text-lg font-semibold text-white">Top knowledge matches</h4>
+              <h4 className="text-lg font-semibold text-slate-900 dark:text-white">Top knowledge matches</h4>
               <ul className="mt-3 space-y-4">
                 {response.knowledge_hits.map((hit) => (
-                  <li key={hit.chunk_id} className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <li key={hit.chunk_id} className="rounded-xl border border-slate-200/60 bg-white/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>{hit.document_title ?? hit.document_id}</span>
                       <span>score {hit.score.toFixed(3)}</span>
                     </div>
-                    <p className="mt-2 text-sm text-slate-200 leading-relaxed">{hit.content}</p>
+                    <p className="mt-2 text-sm text-slate-700 leading-relaxed dark:text-slate-200">{hit.content}</p>
                   </li>
                 ))}
               </ul>
