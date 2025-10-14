@@ -42,7 +42,7 @@ export interface KnowledgeBaseQueryResponse {
   matches: KnowledgeChunkMatch[]
 }
 
-export type Provider = 'huggingface' | 'openai' | 'gemini' | 'llama'
+export type Provider = 'openai' | 'gemini' | 'llama'
 
 export type ChatRole = 'system' | 'user' | 'assistant'
 
@@ -159,6 +159,7 @@ export interface InferenceRequestBody {
   messages?: ChatMessage[]
   system_prompt?: string | null
   knowledge_base_id?: string | null
+  knowledge_base_ids?: string[]
   top_k?: number
   parameters?: Record<string, unknown>
   context_template?: string | null

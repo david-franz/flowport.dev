@@ -1,79 +1,69 @@
 import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import type {
-  ChatMessage,
-  InferenceRequestBody,
-  InferenceResponse,
-  KnowledgeBaseSummary,
-  KnowledgeChunkMatch,
-  Provider,
-} from '../lib/api'
+import type { ChatMessage, InferenceRequestBody, InferenceResponse, KnowledgeBaseSummary, Provider } from '../lib/api'
 import { listKnowledgeBases, runInference } from '../lib/api'
 
-type ProviderApiKeys = Partial<Record<Provider, string>>
-type ProviderParameters = Record<Provider, string>
-type ProviderModels = Record<Provider, string>
+type SavedModel = {
+  id: string
+  label: string
+  provider: Provider
+  modelName: string
+  apiKey: string
+  parameters: string
+  knowledgeBaseIds: string[]
+  instructions: string
+}
 
 const PROVIDERS: { id: Provider; name: string; description: string; docUrl: string }[] = [
   {
-    id: 'huggingface',
-    name: 'Hugging Face',
-    description: 'Route to any Inference API hosted model. Ideal for open-weight instruct models and private deployments.',
-    docUrl: 'https://huggingface.co/inference-api',
-  },
-  {
     id: 'openai',
     name: 'OpenAI',
-    description: 'Tap into GPT models via chat completions with Flowport guardrails and RAG augmentation.',
+    description: 'Connect to GPT models via chat completions and ground answers with Flowknow retrieval.',
     docUrl: 'https://platform.openai.com/docs',
   },
   {
     id: 'gemini',
     name: 'Gemini',
-    description: 'Connect to Google Gemini models using generateContent, with optional system instructions and safety tuning.',
+    description: 'Access Google Gemini models using generateContent with optional grounded knowledge.',
     docUrl: 'https://ai.google.dev/gemini-api/docs',
   },
   {
     id: 'llama',
     name: 'Llama API',
-    description: 'Query Llama models through the hosted chat completions interface with JSON configurable parameters.',
+    description: 'Query hosted Llama models with JSON configurable parameters through Flowport.',
     docUrl: 'https://docs.llama-api.com',
   },
 ]
 
-const PROVIDER_DEFAULT_MODELS: ProviderModels = {
-  huggingface: 'mistralai/Mistral-7B-Instruct-v0.2',
-  openai: 'gpt-4o-mini',
-  gemini: 'gemini-1.5-pro',
-  llama: 'llama-3.1-70b-instruct',
-}
-
-const PROVIDER_DEFAULT_PARAMETERS: ProviderParameters = {
-  huggingface: '{"max_new_tokens": 512}',
-  openai: '{"temperature": 0.2}',
-  gemini: '{"temperature": 0.4}',
-  llama: '{"max_tokens": 512}',
+const MODEL_OPTIONS: Record<Provider, string[]> = {
+  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'o4-mini'],
+  gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro-exp'],
+  llama: ['llama-3.1-70b-instruct', 'llama-3.1-8b-instruct', 'llama-3-405b-instruct'],
 }
 
 const PROVIDER_KEY_PLACEHOLDERS: Record<Provider, string> = {
-  huggingface: 'hf_xxxxx',
   openai: 'sk-...',
   gemini: 'AIzaSy...',
   llama: 'llama-...',
 }
 
-const API_KEYS_STORAGE = 'flowport:provider-api-keys'
-const WELCOME_MESSAGES: Record<Provider, string> = {
-  huggingface: 'Flowport is ready to relay prompts to Hugging Face models. Configure your context and start chatting.',
-  openai: 'You are connected to OpenAI through Flowport. Ask a question or provide instructions to begin.',
-  gemini: 'Gemini access is configured through Flowport. Provide a prompt to generate a response with optional RAG.',
-  llama: 'Route queries to the Llama API via Flowport. Set your model and context, then kick off the conversation.',
+const DEFAULT_PARAMETERS: Record<Provider, string> = {
+  openai: '{"temperature": 0.2}',
+  gemini: '{"temperature": 0.4}',
+  llama: '{"max_tokens": 512}',
 }
 
-const SYSTEM_PROMPT_DEFAULT = 'You are Flowport, a helpful Flowtomic assistant. Answer clearly and reference retrieved knowledge when available.'
+const DEFAULT_TOP_K = 4
 const CONTEXT_TEMPLATE_DEFAULT =
   'Use the following context to answer the question. If the context is empty, answer from general knowledge.\n\nContext:\n{context}\n\nUser prompt:\n{prompt}\n\nResponse:'
 
-type InspectorTab = 'context' | 'knowledge' | 'raw'
+const SYSTEM_PROMPT_DEFAULT = 'You are Flowport, a helpful Flowtomic assistant. Answer clearly and reference retrieved knowledge when available.'
+const MODELS_STORAGE_KEY = 'flowport:models'
+
+const WELCOME_MESSAGES: Record<Provider, string> = {
+  openai: 'Flowport is connected to OpenAI. Provide an API key, attach knowledge, and start the conversation.',
+  gemini: 'Flowport is ready to reach Gemini. Configure your model, link Flowknow, and begin chatting.',
+  llama: 'Flowport will relay prompts to the Llama API. Set parameters, attach knowledge, and ask away.',
+}
 
 const roleLabels: Record<ChatMessage['role'], string> = {
   assistant: 'Flowport',
@@ -87,29 +77,114 @@ const roleAccent: Record<ChatMessage['role'], string> = {
   system: 'bg-slate-100 border-slate-200 text-slate-600 dark:bg-white/10 dark:border-white/10 dark:text-slate-200',
 }
 
-function loadStoredApiKeys(): ProviderApiKeys {
-  if (typeof window === 'undefined') {
-    return {}
+function generateId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
   }
-  try {
-    const stored = window.localStorage.getItem(API_KEYS_STORAGE)
-    if (!stored) return {}
-    const parsed = JSON.parse(stored) as ProviderApiKeys
-    if (parsed && typeof parsed === 'object') {
-      return parsed
-    }
-  } catch (error) {
-    console.warn('Unable to parse stored API keys', error)
-  }
-  return {}
+  return `model-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function saveApiKeys(keys: ProviderApiKeys) {
+function normaliseProvider(value: unknown): Provider {
+  return value === 'gemini' || value === 'llama' ? value : 'openai'
+}
+
+function loadStoredModels(): SavedModel[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(MODELS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item, index) => {
+        if (!item || typeof item !== 'object') return null
+        const provider = normaliseProvider((item as Record<string, unknown>).provider)
+        const modelNameRaw = (item as Record<string, unknown>).modelName
+        const labelRaw = (item as Record<string, unknown>).label
+        const apiKeyRaw = (item as Record<string, unknown>).apiKey
+        const parametersRaw = (item as Record<string, unknown>).parameters
+        const instructionsRaw = (item as Record<string, unknown>).instructions
+        const knowledgeRaw = (item as Record<string, unknown>).knowledgeBaseIds
+        const idRaw = (item as Record<string, unknown>).id
+
+        const fallbackModel = MODEL_OPTIONS[provider][0]
+        const label = typeof labelRaw === 'string' && labelRaw.trim().length > 0 ? labelRaw : `Model ${index + 1}`
+        const knowledgeBaseIds = Array.isArray(knowledgeRaw)
+          ? knowledgeRaw.filter((value): value is string => typeof value === 'string')
+          : []
+
+        return {
+          id: typeof idRaw === 'string' && idRaw.length > 0 ? idRaw : generateId(),
+          label,
+          provider,
+          modelName:
+            typeof modelNameRaw === 'string' && modelNameRaw.trim().length > 0 ? modelNameRaw.trim() : fallbackModel,
+          apiKey: typeof apiKeyRaw === 'string' ? apiKeyRaw : '',
+          parameters:
+            typeof parametersRaw === 'string' && parametersRaw.trim().length > 0
+              ? parametersRaw
+              : DEFAULT_PARAMETERS[provider],
+          knowledgeBaseIds,
+          instructions:
+            typeof instructionsRaw === 'string' && instructionsRaw.trim().length > 0
+              ? instructionsRaw
+              : SYSTEM_PROMPT_DEFAULT,
+        }
+      })
+      .filter((value): value is SavedModel => value !== null)
+  } catch (error) {
+    console.warn('Unable to load stored models', error)
+    return []
+  }
+}
+
+function saveStoredModels(models: SavedModel[]) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(API_KEYS_STORAGE, JSON.stringify(keys))
+    window.localStorage.setItem(MODELS_STORAGE_KEY, JSON.stringify(models))
   } catch (error) {
-    console.warn('Unable to persist API keys', error)
+    console.warn('Unable to persist models', error)
+  }
+}
+
+function createBlankModel(label: string): SavedModel {
+  const provider: Provider = 'openai'
+  return {
+    id: generateId(),
+    label,
+    provider,
+    modelName: MODEL_OPTIONS[provider][0],
+    apiKey: '',
+    parameters: DEFAULT_PARAMETERS[provider],
+    knowledgeBaseIds: [],
+    instructions: SYSTEM_PROMPT_DEFAULT,
+  }
+}
+
+function extractAssistantText(response: InferenceResponse): string {
+  if (response.output_text && response.output_text.trim().length > 0) {
+    return response.output_text.trim()
+  }
+  const payload = response.payload
+  if (typeof payload === 'string') {
+    return payload
+  }
+  if (payload && typeof payload === 'object') {
+    if (Array.isArray(payload)) {
+      const first = payload[0]
+      if (first && typeof first === 'object' && 'generated_text' in first) {
+        const generated = (first as Record<string, unknown>).generated_text
+        if (typeof generated === 'string') return generated
+      }
+    }
+    const maybeText = (payload as Record<string, unknown>).text
+    if (typeof maybeText === 'string') return maybeText
+  }
+  try {
+    return JSON.stringify(payload, null, 2)
+  } catch (error) {
+    console.warn('Unable to serialise payload', error)
+    return '[No text returned]'
   }
 }
 
@@ -155,33 +230,6 @@ function useLockedViewport() {
   }, [])
 }
 
-function extractAssistantText(response: InferenceResponse): string {
-  if (response.output_text && response.output_text.trim().length > 0) {
-    return response.output_text.trim()
-  }
-  const payload = response.payload
-  if (typeof payload === 'string') {
-    return payload
-  }
-  if (payload && typeof payload === 'object') {
-    if (Array.isArray(payload)) {
-      const first = payload[0]
-      if (first && typeof first === 'object' && 'generated_text' in first) {
-        const generated = (first as Record<string, unknown>).generated_text
-        if (typeof generated === 'string') return generated
-      }
-    }
-    const maybeText = (payload as Record<string, unknown>).text
-    if (typeof maybeText === 'string') return maybeText
-  }
-  try {
-    return JSON.stringify(payload, null, 2)
-  } catch (error) {
-    console.warn('Unable to serialise payload', error)
-    return '[No text returned]'
-  }
-}
-
 function SidebarSection({
   title,
   description,
@@ -220,45 +268,56 @@ function SidebarSection({
   )
 }
 
-function InspectorSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-slate-200/60 bg-white/60 p-4 text-sm shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">{title}</h3>
-      <div className="mt-3 text-sm text-slate-700 leading-relaxed dark:text-slate-200">{children}</div>
-    </section>
-  )
-}
-
 export default function Playground() {
   useLockedViewport()
 
-  const [provider, setProvider] = useState<Provider>('huggingface')
-  const [apiKeys, setApiKeys] = useState<ProviderApiKeys>(() => loadStoredApiKeys())
-  const [models, setModels] = useState<ProviderModels>({ ...PROVIDER_DEFAULT_MODELS })
-  const [parameters, setParameters] = useState<ProviderParameters>({ ...PROVIDER_DEFAULT_PARAMETERS })
-  const [systemPrompt, setSystemPrompt] = useState<string>(SYSTEM_PROMPT_DEFAULT)
-  const [contextTemplate, setContextTemplate] = useState<string>(CONTEXT_TEMPLATE_DEFAULT)
-  const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'assistant', content: WELCOME_MESSAGES.huggingface }])
+  const initialModels = useMemo(() => {
+    const stored = loadStoredModels()
+    if (stored.length > 0) {
+      return stored
+    }
+    return [createBlankModel('Model 1')]
+  }, [])
+
+  const [models, setModels] = useState<SavedModel[]>(initialModels)
+  const [selectedModelId, setSelectedModelId] = useState<string>(initialModels[0]?.id ?? '')
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: 'assistant',
+      content: WELCOME_MESSAGES[initialModels[0]?.provider ?? 'openai'],
+    },
+  ])
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseSummary[]>([])
   const [loadingKnowledge, setLoadingKnowledge] = useState<boolean>(true)
   const [knowledgeError, setKnowledgeError] = useState<string | null>(null)
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
-  const [topK, setTopK] = useState<number>(4)
   const [leftCollapsed, setLeftCollapsed] = useState<boolean>(false)
   const [rightCollapsed, setRightCollapsed] = useState<boolean>(false)
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('context')
-  const [lastResponse, setLastResponse] = useState<InferenceResponse | null>(null)
-  const [knowledgeHits, setKnowledgeHits] = useState<KnowledgeChunkMatch[]>([])
-  const [contextText, setContextText] = useState<string | null>(null)
 
   const conversationRef = useRef<HTMLDivElement | null>(null)
 
+  const currentModel = useMemo(
+    () => models.find((model) => model.id === selectedModelId) ?? null,
+    [models, selectedModelId]
+  )
+
   useEffect(() => {
-    saveApiKeys(apiKeys)
-  }, [apiKeys])
+    saveStoredModels(models)
+  }, [models])
+
+  useEffect(() => {
+    if (models.length === 0) {
+      const fallback = createBlankModel('Model 1')
+      setModels([fallback])
+      setSelectedModelId(fallback.id)
+      return
+    }
+    if (!selectedModelId || !models.some((model) => model.id === selectedModelId)) {
+      setSelectedModelId(models[0].id)
+    }
+  }, [models, selectedModelId])
 
   useEffect(() => {
     let ignore = false
@@ -270,13 +329,6 @@ export default function Playground() {
         const data = await listKnowledgeBases()
         if (!ignore) {
           setKnowledgeBases(data)
-          if (data.length > 0) {
-            const preferred =
-              data.find((kb) => kb.id === 'flowport-starter') ??
-              data.find((kb) => kb.id === 'flowknow-starter') ??
-              data[0]
-            setSelectedKnowledgeBaseId((prev) => prev ?? preferred.id)
-          }
         }
       } catch (err) {
         if (!ignore) {
@@ -297,61 +349,69 @@ export default function Playground() {
   }, [])
 
   useEffect(() => {
-    setMessages([{ role: 'assistant', content: WELCOME_MESSAGES[provider] }])
-    setLastResponse(null)
-    setKnowledgeHits([])
-    setContextText(null)
+    if (!currentModel) return
+    setMessages([{ role: 'assistant', content: WELCOME_MESSAGES[currentModel.provider] }])
+    setInputValue('')
     setError(null)
-  }, [provider])
+  }, [currentModel?.id])
 
   useEffect(() => {
     if (!conversationRef.current) return
     conversationRef.current.scrollTop = conversationRef.current.scrollHeight
   }, [messages, isSending])
 
-  const currentProviderMeta = useMemo(() => PROVIDERS.find((item) => item.id === provider) ?? PROVIDERS[0], [provider])
-  const currentModel = models[provider]
-  const currentParameters = parameters[provider]
+  const currentProviderMeta = useMemo(
+    () => PROVIDERS.find((item) => item.id === (currentModel?.provider ?? 'openai')) ?? PROVIDERS[0],
+    [currentModel?.provider]
+  )
 
-  const handleProviderSelect = (next: Provider) => {
-    setProvider(next)
-  }
+  const attachedKnowledge = useMemo(() => {
+    if (!currentModel) return [] as KnowledgeBaseSummary[]
+    return knowledgeBases.filter((kb) => currentModel.knowledgeBaseIds.includes(kb.id))
+  }, [currentModel, knowledgeBases])
 
-  const handleModelChange = (id: Provider, value: string) => {
-    setModels((prev) => ({ ...prev, [id]: value }))
-  }
-
-  const handleParametersChange = (id: Provider, value: string) => {
-    setParameters((prev) => ({ ...prev, [id]: value }))
-  }
-
-  const handleApiKeyChange = (id: Provider, value: string) => {
-    setApiKeys((prev) => ({ ...prev, [id]: value }))
-  }
-
-  const handleRefreshKnowledge = async () => {
-    setLoadingKnowledge(true)
-    setKnowledgeError(null)
-    try {
-      const data = await listKnowledgeBases()
-      setKnowledgeBases(data)
-      if (data.length > 0 && (!selectedKnowledgeBaseId || !data.some((kb) => kb.id === selectedKnowledgeBaseId))) {
-        const preferred =
-          data.find((kb) => kb.id === 'flowport-starter') ??
-          data.find((kb) => kb.id === 'flowknow-starter') ??
-          data[0]
-        setSelectedKnowledgeBaseId(preferred.id)
-      }
-    } catch (err) {
-      setKnowledgeError(err instanceof Error ? err.message : 'Unable to load knowledge bases')
-    } finally {
-      setLoadingKnowledge(false)
+  const handleCreateModel = () => {
+    let created: SavedModel | null = null
+    setModels((prev) => {
+      const label = `Model ${prev.length + 1}`
+      created = createBlankModel(label)
+      return [...prev, created]
+    })
+    if (created) {
+      setSelectedModelId(created.id)
     }
+  }
+
+  const handleDeleteModel = (id: string) => {
+    setModels((prev) => prev.filter((model) => model.id !== id))
+  }
+
+  const updateSelectedModel = (patch: Partial<Omit<SavedModel, 'id'>>) => {
+    if (!currentModel) return
+    setModels((prev) =>
+      prev.map((model) => (model.id === currentModel.id ? { ...model, ...patch } : model))
+    )
+  }
+
+  const handleProviderChange = (next: Provider) => {
+    const defaultModel = MODEL_OPTIONS[next][0]
+    updateSelectedModel({ provider: next, modelName: defaultModel, parameters: DEFAULT_PARAMETERS[next] })
+  }
+
+  const handleKnowledgeToggle = (id: string) => {
+    if (!currentModel) return
+    const setIds = new Set(currentModel.knowledgeBaseIds)
+    if (setIds.has(id)) {
+      setIds.delete(id)
+    } else {
+      setIds.add(id)
+    }
+    updateSelectedModel({ knowledgeBaseIds: Array.from(setIds) })
   }
 
   const handleSubmit = async (event?: FormEvent) => {
     event?.preventDefault()
-    if (isSending) return
+    if (isSending || !currentModel) return
 
     const trimmed = inputValue.trim()
     if (!trimmed) {
@@ -359,14 +419,14 @@ export default function Playground() {
       return
     }
 
-    const apiKey = (apiKeys[provider] ?? '').trim()
+    const apiKey = currentModel.apiKey.trim()
     if (!apiKey) {
       setError(`Add your ${currentProviderMeta.name} API key to continue`)
       return
     }
 
     let parsedParameters: Record<string, unknown> | undefined
-    const parametersText = currentParameters.trim()
+    const parametersText = currentModel.parameters.trim()
     if (parametersText) {
       try {
         parsedParameters = JSON.parse(parametersText)
@@ -382,26 +442,31 @@ export default function Playground() {
     setIsSending(true)
     setError(null)
 
+    const attachedIds = currentModel.knowledgeBaseIds.filter((id) => knowledgeBases.some((kb) => kb.id === id))
+
     const body: InferenceRequestBody = {
-      provider,
-      model: currentModel,
+      provider: currentModel.provider,
+      model: currentModel.modelName,
       messages: nextMessages,
-      system_prompt: systemPrompt.trim() || undefined,
-      knowledge_base_id: selectedKnowledgeBaseId || undefined,
-      top_k: topK || undefined,
+      system_prompt: currentModel.instructions.trim() || undefined,
       parameters: parsedParameters,
-      context_template: contextTemplate.trim() || undefined,
-      api_keys: apiKeys,
+      api_keys: { [currentModel.provider]: apiKey },
+      api_key: apiKey,
+    }
+
+    if (attachedIds.length > 0) {
+      body.knowledge_base_id = attachedIds[0]
+      if (attachedIds.length > 1) {
+        body.knowledge_base_ids = attachedIds
+      }
+      body.top_k = DEFAULT_TOP_K
+      body.context_template = CONTEXT_TEMPLATE_DEFAULT
     }
 
     try {
       const response = await runInference(body)
       const assistantText = extractAssistantText(response)
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantText }])
-      setLastResponse(response)
-      setKnowledgeHits(response.knowledge_hits ?? [])
-      setContextText(response.context ?? null)
-      setInspectorTab(response.context ? 'context' : response.knowledge_hits.length ? 'knowledge' : 'raw')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Inference failed')
       setMessages((prev) => prev.slice(0, -1))
@@ -418,26 +483,24 @@ export default function Playground() {
   }
 
   const resetConversation = () => {
-    setMessages([{ role: 'assistant', content: WELCOME_MESSAGES[provider] }])
+    if (!currentModel) return
+    setMessages([{ role: 'assistant', content: WELCOME_MESSAGES[currentModel.provider] }])
     setInputValue('')
-    setLastResponse(null)
-    setKnowledgeHits([])
-    setContextText(null)
     setError(null)
   }
 
-  const knowledgeReady = useMemo(() => knowledgeBases.some((kb) => kb.ready), [knowledgeBases])
+  const knowledgeReady = knowledgeBases.some((kb) => kb.ready)
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-100/70 text-slate-900 transition dark:bg-slate-950 dark:text-white">
       <aside
-        className={`relative hidden h-full flex-none overflow-hidden border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full min-h-0 flex-none overflow-hidden border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
           onClick={() => setLeftCollapsed((value) => !value)}
           className="absolute -right-3 top-6 flex h-7 w-7 items-center justify-center rounded-full border border-slate-300/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 dark:border-white/20 dark:bg-slate-900 dark:text-slate-200"
-          aria-label={leftCollapsed ? 'Expand settings' : 'Collapse settings'}
+          aria-label={leftCollapsed ? 'Expand models' : 'Collapse models'}
         >
           <svg className={`h-3.5 w-3.5 transition-transform ${leftCollapsed ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
             <path
@@ -450,7 +513,7 @@ export default function Playground() {
 
         {leftCollapsed ? (
           <div className="flex h-full flex-col items-center justify-between py-8 text-xs text-slate-500 dark:text-slate-300">
-            <span className="rotate-90 whitespace-nowrap tracking-widest">Settings</span>
+            <span className="rotate-90 whitespace-nowrap tracking-widest">Models</span>
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowport</span>
           </div>
         ) : (
@@ -458,176 +521,66 @@ export default function Playground() {
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Playground</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
-                Configure providers, keys, prompting, and knowledge before generating responses. Settings apply to the current session.
+                Create reusable Flowport models with provider credentials and attached knowledge bases. Everything is stored locally in your browser.
               </p>
             </div>
             <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
               <SidebarSection
-                title="Model providers"
-                description="Pick a provider to drive inference, set its API key, and provide the model identifier the gateway should use."
+                title="Saved models"
+                description="Select a model to edit its configuration or create a new one."
               >
-                <div className="space-y-3">
-                  {PROVIDERS.map((item) => {
-                    const active = provider === item.id
-                    const keyValue = apiKeys[item.id] ?? ''
-                    const modelValue = models[item.id] ?? ''
-                    const parameterValue = parameters[item.id] ?? ''
-                    return (
-                      <article
-                        key={item.id}
-                        className={`rounded-2xl border px-4 py-4 text-xs transition dark:text-slate-200 ${
-                          active
-                            ? 'border-brand-400 bg-brand-500/10 shadow-sm dark:border-brand-200/40 dark:bg-brand-300/10'
-                            : 'border-slate-200/70 bg-white/70 dark:border-white/10 dark:bg-slate-900/60'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{item.name}</h3>
-                            <p className="mt-1 text-[11px] text-slate-500 leading-relaxed dark:text-slate-300">{item.description}</p>
-                          </div>
+                <div className="space-y-3 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleCreateModel}
+                    className="w-full rounded-lg border border-dashed border-brand-400/60 bg-brand-500/10 px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-400/20 dark:border-brand-200/30 dark:text-brand-200"
+                  >
+                    + Create new model
+                  </button>
+                  {models.length === 0 && (
+                    <p className="text-slate-500 dark:text-slate-300">No models yet. Create one to begin.</p>
+                  )}
+                  <ul className="space-y-2">
+                    {models.map((model) => {
+                      const selected = model.id === currentModel?.id
+                      const providerMeta = PROVIDERS.find((item) => item.id === model.provider) ?? PROVIDERS[0]
+                      return (
+                        <li key={model.id}>
                           <button
                             type="button"
-                            onClick={() => handleProviderSelect(item.id)}
-                            className={`rounded-md border px-3 py-1 text-[11px] font-semibold transition ${
-                              active
-                                ? 'border-brand-400 bg-brand-400/20 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/20 dark:text-brand-50'
-                                : 'border-slate-300/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/20 dark:text-slate-200'
+                            onClick={() => setSelectedModelId(model.id)}
+                            className={`flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-3 text-left text-xs shadow-sm transition ${
+                              selected
+                                ? 'border-brand-400 bg-brand-500/10 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
+                                : 'border-slate-200/60 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
                             }`}
                           >
-                            {active ? 'Selected' : 'Select'}
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-slate-900 dark:text-white">{model.label}</p>
+                              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
+                                {providerMeta.name} • {model.modelName}
+                              </p>
+                              {model.knowledgeBaseIds.length > 0 && (
+                                <p className="mt-1 text-[10px] uppercase tracking-wide text-brand-600 dark:text-brand-200">
+                                  {model.knowledgeBaseIds.length} knowledge source{model.knowledgeBaseIds.length === 1 ? '' : 's'}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleDeleteModel(model.id)
+                              }}
+                              className="rounded-lg border border-slate-200/60 px-2 py-1 text-[10px] font-semibold text-slate-500 transition hover:border-red-300 hover:text-red-500 dark:border-white/20 dark:text-slate-300"
+                            >
+                              Delete
+                            </button>
                           </button>
-                        </div>
-                        <div className="mt-3 space-y-3">
-                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                            API key
-                            <input
-                              type="password"
-                              value={keyValue}
-                              onFocus={() => handleProviderSelect(item.id)}
-                              onChange={(event) => handleApiKeyChange(item.id, event.target.value)}
-                              placeholder={PROVIDER_KEY_PLACEHOLDERS[item.id]}
-                              className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                            />
-                            <span className="mt-1 block text-[10px] text-slate-400 dark:text-slate-500">Stored locally in your browser</span>
-                          </label>
-                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                            Model identifier
-                            <input
-                              type="text"
-                              value={modelValue}
-                              onFocus={() => handleProviderSelect(item.id)}
-                              onChange={(event) => handleModelChange(item.id, event.target.value)}
-                              placeholder={PROVIDER_DEFAULT_MODELS[item.id]}
-                              className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                            />
-                          </label>
-                          {active && (
-                            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                              Parameters (JSON)
-                              <textarea
-                                value={parameterValue}
-                                onChange={(event) => handleParametersChange(item.id, event.target.value)}
-                                rows={4}
-                                className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                              />
-                            </label>
-                          )}
-                        </div>
-                        <a
-                          href={item.docUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 inline-flex items-center gap-2 text-[11px] font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
-                        >
-                          Provider docs →
-                        </a>
-                      </article>
-                    )
-                  })}
-                </div>
-              </SidebarSection>
-
-              <SidebarSection title="Prompt orchestration" description="Adjust system instructions, templates, and retrieval preferences.">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-300">
-                  System prompt
-                  <textarea
-                    value={systemPrompt}
-                    onChange={(event) => setSystemPrompt(event.target.value)}
-                    rows={4}
-                    className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                  />
-                </label>
-                <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-300">
-                  Context template
-                  <textarea
-                    value={contextTemplate}
-                    onChange={(event) => setContextTemplate(event.target.value)}
-                    rows={5}
-                    className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                  />
-                </label>
-                <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-300">
-                  RAG Top K
-                  <input
-                    type="number"
-                    value={topK}
-                    min={1}
-                    max={20}
-                    onChange={(event) => setTopK(Number(event.target.value) || 1)}
-                    className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                  />
-                </label>
-              </SidebarSection>
-
-              <SidebarSection title="Knowledge" description="Attach Flowknow databases to ground responses with retrieval results.">
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-300">
-                  <span>{loadingKnowledge ? 'Loading knowledge bases…' : knowledgeReady ? 'Select a knowledge base' : 'No knowledge bases yet'}</span>
-                  <button
-                    type="button"
-                    onClick={handleRefreshKnowledge}
-                    className="rounded-md border border-slate-200/60 px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-brand-300 hover:text-brand-700 dark:border-white/20 dark:text-slate-300"
-                  >
-                    Refresh
-                  </button>
-                </div>
-                {knowledgeError && <p className="mt-2 text-xs text-red-500 dark:text-red-400">{knowledgeError}</p>}
-                {knowledgeBases.some((kb) => kb.id === 'flowport-starter') && (
-                  <p className="mt-3 text-[11px] text-slate-500 leading-relaxed dark:text-slate-300">
-                    Tip: The Flowport Starter Pack combines Flowport and Flowknow highlights so you can attach it to any
-                    model and immediately demonstrate retrieval-augmented answers.
-                  </p>
-                )}
-                <div className="mt-3 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedKnowledgeBaseId(null)}
-                    className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${
-                      selectedKnowledgeBaseId === null
-                        ? 'border-brand-400 bg-brand-500/10 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
-                        : 'border-slate-200/60 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
-                    }`}
-                  >
-                    No knowledge base
-                  </button>
-                  {knowledgeBases.map((kb) => (
-                    <button
-                      key={kb.id}
-                      type="button"
-                      onClick={() => setSelectedKnowledgeBaseId(kb.id)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${
-                        selectedKnowledgeBaseId === kb.id
-                          ? 'border-brand-400 bg-brand-500/10 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
-                          : 'border-slate-200/60 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
-                      }`}
-                    >
-                      <span className="font-semibold text-slate-700 dark:text-white">{kb.name}</span>
-                      {kb.description && <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-300">{kb.description}</span>}
-                      <span className="mt-1 block text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                        {kb.document_count} docs · {kb.chunk_count} chunks {kb.ready ? '' : '• rebuilding'}
-                      </span>
-                    </button>
-                  ))}
+                        </li>
+                      )
+                    })}
+                  </ul>
                 </div>
               </SidebarSection>
             </div>
@@ -635,15 +588,27 @@ export default function Playground() {
         )}
       </aside>
 
-      <section className="flex flex-1 min-h-0 flex-col overflow-hidden px-4 py-6">
+      <section className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 py-6">
         <header className="flex flex-col gap-2 rounded-3xl border border-slate-200/60 bg-white/80 px-6 py-4 shadow-sm dark:border-white/10 dark:bg-slate-950/50">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-lg font-semibold text-slate-900 dark:text-white">Flowport Playground</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-300">
-                {currentProviderMeta.name} • {currentModel}
-                {selectedKnowledgeBaseId ? ` • Knowledge: ${knowledgeBases.find((kb) => kb.id === selectedKnowledgeBaseId)?.name ?? 'Selected'}` : ''}
-              </p>
+              {currentModel ? (
+                <p className="text-sm text-slate-500 dark:text-slate-300">
+                  {currentProviderMeta.name} • {currentModel.modelName}
+                  {attachedKnowledge.length > 0 && (
+                    <span>
+                      {' '}
+                      • Knowledge:{' '}
+                      {attachedKnowledge
+                        .map((kb) => kb.name)
+                        .join(', ')}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-300">Create a model to start chatting.</p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -657,7 +622,7 @@ export default function Playground() {
           </div>
         </header>
 
-        <div className="mt-4 flex flex-1 min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+        <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
           <div ref={conversationRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
               {messages.map((message, index) => (
@@ -679,7 +644,7 @@ export default function Playground() {
               )}
             </div>
           </div>
-          <form onSubmit={handleSubmit} className="border-t border-slate-200/60 bg-slate-50/80 px-6 py-4 dark:border-white/10 dark:bg-slate-900/60">
+          <form onSubmit={handleSubmit} className="shrink-0 border-t border-slate-200/60 bg-slate-50/80 px-6 py-4 dark:border-white/10 dark:bg-slate-900/60">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
                 Compose message
@@ -708,13 +673,13 @@ export default function Playground() {
       </section>
 
       <aside
-        className={`relative hidden h-full flex-none overflow-hidden border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full min-h-0 flex-none overflow-hidden border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
           onClick={() => setRightCollapsed((value) => !value)}
           className="absolute -left-3 top-6 flex h-7 w-7 items-center justify-center rounded-full border border-slate-300/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 dark:border-white/20 dark:bg-slate-900 dark:text-slate-200"
-          aria-label={rightCollapsed ? 'Expand inspector' : 'Collapse inspector'}
+          aria-label={rightCollapsed ? 'Expand configuration' : 'Collapse configuration'}
         >
           <svg className={`h-3.5 w-3.5 transition-transform ${rightCollapsed ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
             <path
@@ -727,96 +692,182 @@ export default function Playground() {
 
         {rightCollapsed ? (
           <div className="flex h-full flex-col items-center justify-between py-8 text-xs text-slate-500 dark:text-slate-300">
-            <span className="rotate-90 whitespace-nowrap tracking-widest">Insights</span>
+            <span className="rotate-90 whitespace-nowrap tracking-widest">Config</span>
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowport</span>
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Inspector</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Model configuration</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
-                Review retrieved context, top matches, and raw responses for the latest generation.
+                Provide credentials, pick a provider model, attach Flowknow knowledge bases, and add special instructions.
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200/60 bg-white/70 p-1 text-xs font-semibold text-slate-600 shadow-sm dark:border-white/10 dark:bg-slate-950/60 dark:text-slate-200">
-              <button
-                type="button"
-                onClick={() => setInspectorTab('context')}
-                className={`flex-1 rounded-2xl px-3 py-1 transition ${
-                  inspectorTab === 'context'
-                    ? 'bg-brand-500/20 text-brand-700 dark:bg-brand-300/20 dark:text-brand-50'
-                    : 'hover:text-brand-700 dark:hover:text-brand-200'
-                }`}
-              >
-                Context
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorTab('knowledge')}
-                className={`flex-1 rounded-2xl px-3 py-1 transition ${
-                  inspectorTab === 'knowledge'
-                    ? 'bg-brand-500/20 text-brand-700 dark:bg-brand-300/20 dark:text-brand-50'
-                    : 'hover:text-brand-700 dark:hover:text-brand-200'
-                }`}
-              >
-                Knowledge
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorTab('raw')}
-                className={`flex-1 rounded-2xl px-3 py-1 transition ${
-                  inspectorTab === 'raw'
-                    ? 'bg-brand-500/20 text-brand-700 dark:bg-brand-300/20 dark:text-brand-50'
-                    : 'hover:text-brand-700 dark:hover:text-brand-200'
-                }`}
-              >
-                Raw
-              </button>
-            </div>
             <div className="flex-1 space-y-4 overflow-y-auto pr-1">
-              {inspectorTab === 'context' && (
-                <InspectorSection title="Injected context">
-                  {contextText ? (
-                    <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-xl border border-slate-200/60 bg-white/80 p-3 text-xs leading-relaxed text-slate-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200">
-                      {contextText}
-                    </pre>
-                  ) : (
-                    <p className="text-xs text-slate-500 dark:text-slate-300">No context was injected for the last response.</p>
-                  )}
-                </InspectorSection>
-              )}
+              <SidebarSection
+                title="Provider & key"
+                description="Choose where to route the model and store the API key locally."
+              >
+                {currentModel ? (
+                  <div className="space-y-3 text-xs">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      Provider
+                      <select
+                        value={currentModel.provider}
+                        onChange={(event) => handleProviderChange(event.target.value as Provider)}
+                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                      >
+                        {PROVIDERS.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      API key
+                      <input
+                        type="password"
+                        value={currentModel.apiKey}
+                        onChange={(event) => updateSelectedModel({ apiKey: event.target.value })}
+                        placeholder={PROVIDER_KEY_PLACEHOLDERS[currentModel.provider]}
+                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                      />
+                      <span className="mt-1 block text-[10px] text-slate-400 dark:text-slate-500">Stored locally in your browser</span>
+                    </label>
+                    <a
+                      href={currentProviderMeta.docUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 text-[11px] font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
+                    >
+                      Provider docs →
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-300">Create or select a model to edit these settings.</p>
+                )}
+              </SidebarSection>
 
-              {inspectorTab === 'knowledge' && (
-                <InspectorSection title="Top matches">
-                  {knowledgeHits.length === 0 ? (
-                    <p className="text-xs text-slate-500 dark:text-slate-300">No matching chunks were returned.</p>
-                  ) : (
-                    <ul className="space-y-3 text-xs text-slate-600 dark:text-slate-200">
-                      {knowledgeHits.map((hit) => (
-                        <li key={hit.chunk_id} className="rounded-xl border border-slate-200/60 bg-white/80 p-3 dark:border-white/10 dark:bg-slate-900/40">
-                          <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
-                            <span>{hit.document_title ?? hit.document_id}</span>
-                            <span>score {hit.score.toFixed(3)}</span>
-                          </div>
-                          <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600 dark:text-slate-200">{hit.content}</p>
-                        </li>
-                      ))}
+              <SidebarSection
+                title="Model details"
+                description="Select a provider model from the list or type a custom identifier."
+              >
+                {currentModel ? (
+                  <div className="space-y-3 text-xs">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      Model identifier
+                      <input
+                        type="text"
+                        list={`model-options-${currentModel.provider}`}
+                        value={currentModel.modelName}
+                        onChange={(event) => updateSelectedModel({ modelName: event.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                      />
+                      <datalist id={`model-options-${currentModel.provider}`}>
+                        {MODEL_OPTIONS[currentModel.provider].map((option) => (
+                          <option key={option} value={option} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      Parameters (JSON)
+                      <textarea
+                        value={currentModel.parameters}
+                        onChange={(event) => updateSelectedModel({ parameters: event.target.value })}
+                        rows={5}
+                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-300">Select a model to view details.</p>
+                )}
+              </SidebarSection>
+
+              <SidebarSection
+                title="Knowledge attachments"
+                description="Attach one or more Flowknow knowledge bases to this model."
+              >
+                {currentModel ? (
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
+                      <span>{loadingKnowledge ? 'Loading…' : knowledgeReady ? 'Available' : 'Unavailable'}</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setLoadingKnowledge(true)
+                          setKnowledgeError(null)
+                          try {
+                            const data = await listKnowledgeBases()
+                            setKnowledgeBases(data)
+                          } catch (err) {
+                            setKnowledgeError(err instanceof Error ? err.message : 'Unable to load knowledge bases')
+                          } finally {
+                            setLoadingKnowledge(false)
+                          }
+                        }}
+                        className="rounded-md border border-slate-200/60 px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-brand-300 hover:text-brand-700 dark:border-white/20 dark:text-slate-300"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {knowledgeError && <p className="text-xs text-red-500 dark:text-red-400">{knowledgeError}</p>}
+                    {knowledgeBases.length === 0 && !loadingKnowledge && (
+                      <p className="text-xs text-slate-500 dark:text-slate-300">No knowledge bases available. Create some in Flowknow first.</p>
+                    )}
+                    <p className="text-[11px] text-slate-400 dark:text-slate-400">
+                      Knowledge attachments are optional — you can chat with the provider using only the system instructions.
+                    </p>
+                    <ul className="space-y-2">
+                      {knowledgeBases.map((kb) => {
+                        const checked = currentModel.knowledgeBaseIds.includes(kb.id)
+                        return (
+                          <li key={kb.id} className="rounded-xl border border-slate-200/60 bg-white/70 px-3 py-2 text-xs dark:border-white/10 dark:bg-slate-900/60">
+                            <label className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => handleKnowledgeToggle(kb.id)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400 dark:border-white/20 dark:bg-slate-900"
+                              />
+                              <span className="flex-1 text-left">
+                                <span className="block text-sm font-semibold text-slate-900 dark:text-white">{kb.name}</span>
+                                {kb.description && (
+                                  <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-300">{kb.description}</span>
+                                )}
+                                <span className="mt-1 block text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                                  {kb.document_count} docs · {kb.chunk_count} chunks {kb.ready ? '' : '• rebuilding'}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        )
+                      })}
                     </ul>
-                  )}
-                </InspectorSection>
-              )}
+                    {knowledgeBases.some((kb) => kb.id === 'flowport-starter') && (
+                      <p className="text-[11px] text-slate-500 leading-relaxed dark:text-slate-300">
+                        Tip: Attach the Flowport and Flowknow starter packs to test grounded conversations immediately.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-300">Select a model to attach knowledge bases.</p>
+                )}
+              </SidebarSection>
 
-              {inspectorTab === 'raw' && (
-                <InspectorSection title="Raw response">
-                  {lastResponse ? (
-                    <pre className="max-h-60 overflow-auto whitespace-pre text-xs text-slate-700 dark:text-slate-100">
-                      {JSON.stringify(lastResponse.payload, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="text-xs text-slate-500 dark:text-slate-300">Send a message to view raw payloads.</p>
-                  )}
-                </InspectorSection>
-              )}
+              <SidebarSection title="Special instructions" description="Set the system instructions that guide the model.">
+                {currentModel ? (
+                  <textarea
+                    value={currentModel.instructions}
+                    onChange={(event) => updateSelectedModel({ instructions: event.target.value })}
+                    rows={5}
+                    className="w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
+                  />
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-300">Choose a model to edit its instructions.</p>
+                )}
+              </SidebarSection>
             </div>
           </div>
         )}
