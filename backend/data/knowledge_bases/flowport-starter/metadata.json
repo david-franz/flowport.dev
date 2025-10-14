@@ -1,0 +1,61 @@
+{
+  "id": "flowport-starter",
+  "name": "Flowport Starter Pack",
+  "description": "Key concepts and positioning for Flowport, the Flowtomic gateway to Hugging Face models.",
+  "source": "prebuilt",
+  "created_at": "2025-10-14T10:12:49.848345+00:00",
+  "updated_at": "2025-10-14T10:12:49.868031+00:00",
+  "documents": [
+    {
+      "id": "464b7c5d-7e55-4577-af3e-5b2af39684e2",
+      "title": "Flowport Overview",
+      "original_filename": null,
+      "media_type": "text/plain",
+      "size_bytes": 322,
+      "chunk_ids": [
+        "9d0bf2a2-6490-45f5-8e09-ba9e95c415f2"
+      ],
+      "chunk_count": 1,
+      "created_at": "2025-10-14T10:12:49.848787+00:00",
+      "metadata": {
+        "prebuilt": true,
+        "source_file": "flowport-starter.json"
+      }
+    },
+    {
+      "id": "97f404ff-57a7-4633-a414-e87a97d90a8a",
+      "title": "Key Features",
+      "original_filename": null,
+      "media_type": "text/plain",
+      "size_bytes": 425,
+      "chunk_ids": [
+        "06168f14-ed78-451b-abc7-55282db49e5f"
+      ],
+      "chunk_count": 1,
+      "created_at": "2025-10-14T10:12:49.856318+00:00",
+      "metadata": {
+        "prebuilt": true,
+        "source_file": "flowport-starter.json"
+      }
+    },
+    {
+      "id": "38faf57c-7466-40bb-8890-eaa4087d9655",
+      "title": "Supported Knowledge Sources",
+      "original_filename": null,
+      "media_type": "text/plain",
+      "size_bytes": 306,
+      "chunk_ids": [
+        "10355913-6ad3-457d-bcdd-68ac2362ecdc"
+      ],
+      "chunk_count": 1,
+      "created_at": "2025-10-14T10:12:49.860656+00:00",
+      "metadata": {
+        "prebuilt": true,
+        "source_file": "flowport-starter.json"
+      }
+    }
+  ],
+  "chunk_count": 3,
+  "ready": true,
+  "document_count": 3
+}
