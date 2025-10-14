@@ -37,10 +37,10 @@ export default function Home() {
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
-                to="/gateway"
+                to="/playground"
                 className="rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-brand-400"
               >
-                Try the gateway
+                Open the playground
               </Link>
               <a
                 href="https://flowknow.dev"

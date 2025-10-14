@@ -41,12 +41,24 @@ export interface KnowledgeBaseQueryResponse {
   matches: KnowledgeChunkMatch[]
 }
 
+export type Provider = 'huggingface' | 'openai' | 'gemini' | 'llama'
+
+export type ChatRole = 'system' | 'user' | 'assistant'
+
+export interface ChatMessage {
+  role: ChatRole
+  content: string
+}
+
 export interface InferenceResponse {
+  provider: Provider
   model: string
   prompt: string
   payload: unknown
+  output_text?: string | null
   context?: string | null
   knowledge_hits: KnowledgeChunkMatch[]
+  messages: ChatMessage[]
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api'
@@ -139,16 +151,22 @@ export function queryKnowledgeBase(
   })
 }
 
-export function runInference(body: {
-  hf_api_key: string
+export interface InferenceRequestBody {
+  provider: Provider
   model: string
-  prompt: string
+  prompt?: string | null
+  messages?: ChatMessage[]
   system_prompt?: string | null
   knowledge_base_id?: string | null
   top_k?: number
   parameters?: Record<string, unknown>
   context_template?: string | null
-}): Promise<InferenceResponse> {
+  api_keys?: Partial<Record<Provider, string>>
+  api_key?: string | null
+  hf_api_key?: string | null
+}
+
+export function runInference(body: InferenceRequestBody): Promise<InferenceResponse> {
   return request('/inference', {
     method: 'POST',
     body: JSON.stringify(body),
