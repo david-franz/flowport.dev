@@ -264,7 +264,11 @@ export default function Playground() {
         if (!ignore) {
           setKnowledgeBases(data)
           if (data.length > 0) {
-            setSelectedKnowledgeBaseId((prev) => prev ?? data[0].id)
+            const preferred =
+              data.find((kb) => kb.id === 'flowport-starter') ??
+              data.find((kb) => kb.id === 'flowknow-starter') ??
+              data[0]
+            setSelectedKnowledgeBaseId((prev) => prev ?? preferred.id)
           }
         }
       } catch (err) {
@@ -325,7 +329,11 @@ export default function Playground() {
       const data = await listKnowledgeBases()
       setKnowledgeBases(data)
       if (data.length > 0 && (!selectedKnowledgeBaseId || !data.some((kb) => kb.id === selectedKnowledgeBaseId))) {
-        setSelectedKnowledgeBaseId(data[0].id)
+        const preferred =
+          data.find((kb) => kb.id === 'flowport-starter') ??
+          data.find((kb) => kb.id === 'flowknow-starter') ??
+          data[0]
+        setSelectedKnowledgeBaseId(preferred.id)
       }
     } catch (err) {
       setKnowledgeError(err instanceof Error ? err.message : 'Unable to load knowledge bases')
@@ -416,7 +424,7 @@ export default function Playground() {
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-100/70 text-slate-900 transition dark:bg-slate-950 dark:text-white">
       <aside
-        className={`relative hidden h-full flex-none flex-col border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full flex-none overflow-hidden border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
@@ -563,6 +571,12 @@ export default function Playground() {
                   </button>
                 </div>
                 {knowledgeError && <p className="mt-2 text-xs text-red-500 dark:text-red-400">{knowledgeError}</p>}
+                {knowledgeBases.some((kb) => kb.id === 'flowport-starter') && (
+                  <p className="mt-3 text-[11px] text-slate-500 leading-relaxed dark:text-slate-300">
+                    Tip: The Flowport Starter Pack combines Flowport and Flowknow highlights so you can attach it to any
+                    model and immediately demonstrate retrieval-augmented answers.
+                  </p>
+                )}
                 <div className="mt-3 space-y-2">
                   <button
                     type="button"
@@ -673,7 +687,7 @@ export default function Playground() {
       </section>
 
       <aside
-        className={`relative hidden h-full flex-none flex-col border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full flex-none overflow-hidden border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
