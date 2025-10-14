@@ -588,7 +588,7 @@ export default function Playground() {
         )}
       </aside>
 
-      <section className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 py-6">
+      <section className="flex flex-1 min-h-0 flex-col gap-3 overflow-hidden px-4 py-4">
         <header className="flex flex-col gap-2 rounded-3xl border border-slate-200/60 bg-white/80 px-6 py-4 shadow-sm dark:border-white/10 dark:bg-slate-950/50">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -623,7 +623,7 @@ export default function Playground() {
         </header>
 
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-          <div ref={conversationRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
+          <div ref={conversationRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
               {messages.map((message, index) => (
                 <article
@@ -644,7 +644,7 @@ export default function Playground() {
               )}
             </div>
           </div>
-          <form onSubmit={handleSubmit} className="shrink-0 border-t border-slate-200/60 bg-slate-50/80 px-6 py-4 dark:border-white/10 dark:bg-slate-900/60">
+          <form onSubmit={handleSubmit} className="shrink-0 border-t border-slate-200/60 bg-slate-50/80 px-6 py-3 dark:border-white/10 dark:bg-slate-900/60">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
                 Compose message
@@ -703,7 +703,7 @@ export default function Playground() {
                 Provide credentials, pick a provider model, attach Flowknow knowledge bases, and add special instructions.
               </p>
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
               <SidebarSection
                 title="Provider & key"
                 description="Choose where to route the model and store the API key locally."
