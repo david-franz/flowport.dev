@@ -10,9 +10,9 @@ export default function Home() {
         'Point Flowport at any Hugging Face model, from popular open-weight instruct models to private enterprise deployments. The gateway handles keys, throttling, and response normalisation so your app just calls one API.',
     },
     {
-      title: 'Retrieval built-in',
+      title: 'RAG-ready handoff',
       description:
-        'Upload files, sync knowledge packs, or auto-build a database from raw content. Flowport keeps everything chunked, indexed, and ready to inject into prompts with a single flag.',
+        'Flowknow curates the knowledge; Flowport injects it into generation. Reference Flowknow databases directly from the gateway to keep prompts grounded without rebuilding infrastructure.',
     },
     {
       title: 'Production readiness',
@@ -30,11 +30,10 @@ export default function Home() {
               Flowtomic • Flowport
             </span>
             <h1 className="text-4xl md:text-5xl font-semibold text-white leading-tight">
-              The Flowtomic gateway for Hugging Face models and retrieval augmented intelligence.
+              The Flowtomic gateway for Hugging Face models in production.
             </h1>
             <p className="text-lg text-slate-300 leading-relaxed">
-              Flowport unifies inference and knowledge management so you can compose production-ready experiences across Flowgraph,
-              Flowform, and Flowlang in minutes. Connect any Hugging Face model, attach the right context, and serve reliable responses at speed.
+              Flowport focuses on inference orchestration so you can compose production-ready experiences across Flowgraph, Flowform, and Flowlang in minutes. Connect any Hugging Face model, attach context prepared in Flowknow, and serve reliable responses at speed.
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
@@ -43,9 +42,9 @@ export default function Home() {
               >
                 Try the gateway
               </Link>
-              <Link to="/knowledge" className="text-sm font-medium text-brand-200 hover:text-brand-100">
-                Explore knowledge tools →
-              </Link>
+              <a href="https://flowknow.dev" className="text-sm font-medium text-brand-200 hover:text-brand-100" target="_blank" rel="noreferrer">
+                Visit Flowknow →
+              </a>
             </div>
           </div>
           <div className="relative">
@@ -54,7 +53,7 @@ export default function Home() {
               <h3 className="text-lg font-semibold text-white">One API, every model</h3>
               <p className="mt-3 text-sm text-slate-300 leading-relaxed">
                 POST <code className="rounded bg-white/10 px-1">/inference</code> with your Hugging Face token to stream responses from any hosted
-                model. Include <code className="rounded bg-white/10 px-1">knowledge_base_id</code> to enrich prompts with the latest RAG context managed by Flowport.
+                model. Include <code className="rounded bg-white/10 px-1">knowledge_base_id</code> to enrich prompts with the latest RAG context managed in Flowknow.
               </p>
               <pre className="mt-5 overflow-x-auto rounded-2xl bg-slate-950/70 p-4 text-xs text-brand-100 border border-white/10">
 {`curl https://your-flowport-url/api/inference \
@@ -93,7 +92,7 @@ export default function Home() {
           {[
             {
               title: 'Flowgraph ops',
-              description: 'Trigger complex process flows that call Hugging Face models with contextual awareness pulled from Flowport knowledge stores.',
+              description: 'Trigger complex process flows that call Hugging Face models with contextual awareness pulled from Flowknow knowledge stores via Flowport.',
             },
             {
               title: 'Flowform experiences',

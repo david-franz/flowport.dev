@@ -1,15 +1,46 @@
+import { useEffect, useState } from 'react'
 import { InferencePlayground } from '../components/InferencePlayground'
 import { SectionHeading } from '../components/SectionHeading'
-import { KnowledgeBaseSummary } from '../lib/api'
+import { KnowledgeBaseSummary, listKnowledgeBases } from '../lib/api'
 
 interface GatewayPageProps {
-  knowledgeBases: KnowledgeBaseSummary[]
-  selectedKnowledgeBaseId: string | null
-  onKnowledgeBaseChange: (id: string | null) => void
   onApiKeyChange: (key: string) => void
+  initialApiKey?: string
 }
 
-export default function Gateway({ knowledgeBases, selectedKnowledgeBaseId, onKnowledgeBaseChange, onApiKeyChange }: GatewayPageProps) {
+export default function Gateway({ onApiKeyChange, initialApiKey }: GatewayPageProps) {
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseSummary[]>([])
+  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let ignore = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await listKnowledgeBases()
+        if (!ignore) {
+          setKnowledgeBases(data)
+          if (data.length > 0) {
+            setSelectedKnowledgeBaseId((prev) => prev ?? data[0].id)
+          }
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : 'Unable to load knowledge bases')
+        }
+      } finally {
+        if (!ignore) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
   return (
     <div className="container-page px-4 flex flex-col gap-14">
       <SectionHeading
@@ -21,8 +52,11 @@ export default function Gateway({ knowledgeBases, selectedKnowledgeBaseId, onKno
       <InferencePlayground
         knowledgeBases={knowledgeBases}
         selectedKnowledgeBaseId={selectedKnowledgeBaseId}
-        onKnowledgeBaseChange={onKnowledgeBaseChange}
+        onKnowledgeBaseChange={setSelectedKnowledgeBaseId}
         onApiKeyChange={onApiKeyChange}
+        initialApiKey={initialApiKey}
+        loadingKnowledge={loading}
+        knowledgeError={error}
       />
     </div>
   )

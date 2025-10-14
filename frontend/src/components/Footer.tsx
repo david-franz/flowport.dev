@@ -15,6 +15,9 @@ export function Footer() {
           <Link className="hover:text-white" to="/gateway">
             Gateway
           </Link>
+          <a className="hover:text-white" href="https://flowknow.dev" target="_blank" rel="noreferrer">
+            Flowknow.dev
+          </a>
         </div>
       </div>
     </footer>

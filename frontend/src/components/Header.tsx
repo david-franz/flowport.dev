@@ -5,7 +5,6 @@ import { useDark } from '../lib/useDark'
 const navItems = [
   { to: '/', label: 'Home' },
   { to: '/gateway', label: 'Gateway' },
-  { to: '/knowledge', label: 'Knowledge' },
   { to: '/docs', label: 'Docs' }
 ]
 

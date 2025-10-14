@@ -1,16 +1,12 @@
-import { useState } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { Footer } from './components/Footer'
 import { Header } from './components/Header'
 import Home from './pages/Home'
 import Gateway from './pages/Gateway'
-import Knowledge from './pages/Knowledge'
 import Docs from './pages/Docs'
-import { KnowledgeBaseSummary } from './lib/api'
+import { useState } from 'react'
 
 export default function App() {
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseSummary[]>([])
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
   const [hfApiKey, setHfApiKey] = useState<string | null>(null)
 
   return (
@@ -22,23 +18,7 @@ export default function App() {
           <Route
             path="/gateway"
             element={
-              <Gateway
-                knowledgeBases={knowledgeBases}
-                selectedKnowledgeBaseId={selectedKnowledgeBaseId}
-                onKnowledgeBaseChange={setSelectedKnowledgeBaseId}
-                onApiKeyChange={(key) => setHfApiKey(key || null)}
-              />
-            }
-          />
-          <Route
-            path="/knowledge"
-            element={
-              <Knowledge
-                selectedKnowledgeBaseId={selectedKnowledgeBaseId}
-                onSelectKnowledgeBase={setSelectedKnowledgeBaseId}
-                onListChange={setKnowledgeBases}
-                hfApiKey={hfApiKey}
-              />
+              <Gateway onApiKeyChange={(key) => setHfApiKey(key || null)} initialApiKey={hfApiKey ?? undefined} />
             }
           />
           <Route path="/docs" element={<Docs />} />

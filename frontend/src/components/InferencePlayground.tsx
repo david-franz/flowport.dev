@@ -1,4 +1,13 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  FlowFormDefinition,
+  FlowFormFieldDefinition,
+  FlowFormInstance,
+  createFlowForm,
+  reconcileFlowForm,
+  updateFlowForm,
+} from 'flowform'
+import { FlowFormRenderer } from './FlowFormRenderer'
 import { InferenceResponse, KnowledgeBaseSummary, runInference } from '../lib/api'
 
 const HF_KEY_STORAGE = 'flowport:hf-api-key'
@@ -13,6 +22,106 @@ interface InferencePlaygroundProps {
   selectedKnowledgeBaseId?: string | null
   onKnowledgeBaseChange?: (id: string | null) => void
   onApiKeyChange?: (key: string) => void
+  initialApiKey?: string
+  loadingKnowledge?: boolean
+  knowledgeError?: string | null
+}
+
+function buildDefinition(knowledgeBases: KnowledgeBaseSummary[]): FlowFormDefinition {
+  return {
+    id: 'flowport-inference',
+    sections: [
+      {
+        id: 'connection',
+        title: 'Connection',
+        description: 'Authenticate with Hugging Face and choose a model to run on Flowport.',
+        fields: [
+          {
+            id: 'hf_api_key',
+            label: 'Hugging Face API key',
+            kind: 'password',
+            required: true,
+            placeholder: 'hf_xxxxx',
+          },
+          {
+            id: 'model',
+            label: 'Model name',
+            kind: 'text',
+            required: true,
+            defaultValue: 'mistralai/Mistral-7B-Instruct-v0.2',
+          },
+        ],
+      },
+      {
+        id: 'prompting',
+        title: 'Prompting',
+        description: 'Craft the instructions and prompt context for the model.',
+        fields: [
+          {
+            id: 'system_prompt',
+            label: 'System prompt',
+            kind: 'text',
+            placeholder: 'Optional system instructions',
+            defaultValue: 'You are Flowport, a helpful Flowtomic assistant.',
+          },
+          {
+            id: 'prompt',
+            label: 'Prompt',
+            kind: 'textarea',
+            required: true,
+            defaultValue: 'How does Flowport help teams deploy Hugging Face models?',
+            rows: 6,
+          },
+        ],
+      },
+      {
+        id: 'knowledge',
+        title: 'Augment with knowledge (optional)',
+        description: 'Attach a Flowknow knowledge base to inject relevant context prior to generation.',
+        fields: [
+          {
+            id: 'knowledge_base_id',
+            label: 'Knowledge base',
+            kind: 'select',
+            options: [{ value: '', label: 'No knowledge base' }, ...knowledgeBases.map((kb) => ({
+              value: kb.id,
+              label: `${kb.name}${kb.source === 'prebuilt' ? ' (prebuilt)' : ''}`,
+            }))],
+          },
+          {
+            id: 'top_k',
+            label: 'Top K',
+            kind: 'number',
+            defaultValue: 4,
+            min: 1,
+            max: 20,
+            step: 1,
+            width: 'half',
+          },
+          {
+            id: 'context_template',
+            label: 'Context template',
+            kind: 'textarea',
+            rows: 4,
+            defaultValue: `Use the following context to answer the question.\n\nContext:\n{context}\n\nQ: {prompt}\nA:`,
+          },
+        ],
+      },
+      {
+        id: 'advanced',
+        title: 'Parameters',
+        fields: [
+          {
+            id: 'parameters',
+            label: 'Model parameters (JSON)',
+            kind: 'textarea',
+            placeholder: '{"max_new_tokens": 512}',
+            rows: 5,
+          },
+        ],
+      },
+    ],
+  }
 }
 
 export function InferencePlayground({
@@ -20,52 +129,63 @@ export function InferencePlayground({
   selectedKnowledgeBaseId,
   onKnowledgeBaseChange,
   onApiKeyChange,
+  initialApiKey,
+  loadingKnowledge,
+  knowledgeError,
 }: InferencePlaygroundProps) {
-  const [apiKey, setApiKey] = useState<string>(getStoredKey)
-  const [model, setModel] = useState<string>('mistralai/Mistral-7B-Instruct-v0.2')
-  const [prompt, setPrompt] = useState<string>('How does Flowport help teams deploy Hugging Face models?')
-  const [systemPrompt, setSystemPrompt] = useState<string>('You are Flowport, a helpful Flowtomic assistant.')
-  const [topK, setTopK] = useState<number>(4)
-  const [parameters, setParameters] = useState<string>('')
-  const [contextTemplate, setContextTemplate] = useState<string>(
-    `Use the following context to answer the question.\n\nContext:\n{context}\n\nQ: {prompt}\nA:`
+  const definition = useMemo(() => buildDefinition(knowledgeBases), [knowledgeBases])
+  const [form, setForm] = useState<FlowFormInstance>(() =>
+    createFlowForm(definition, {
+      hf_api_key: initialApiKey ?? getStoredKey(),
+      knowledge_base_id: selectedKnowledgeBaseId ?? '',
+    })
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [response, setResponse] = useState<InferenceResponse | null>(null)
 
-  const selectedId = useMemo(() => selectedKnowledgeBaseId ?? '', [selectedKnowledgeBaseId])
+  useEffect(() => {
+    setForm((previous) =>
+      reconcileFlowForm(previous, definition, {
+        hf_api_key: previous.values.hf_api_key ?? initialApiKey ?? getStoredKey(),
+        knowledge_base_id: selectedKnowledgeBaseId ?? previous.values.knowledge_base_id ?? '',
+      })
+    )
+  }, [definition, selectedKnowledgeBaseId, initialApiKey])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (apiKey) {
-      window.localStorage.setItem(HF_KEY_STORAGE, apiKey)
-    } else {
-      window.localStorage.removeItem(HF_KEY_STORAGE)
+    const key = String(form.values.hf_api_key ?? '')
+    if (typeof window !== 'undefined') {
+      if (key) {
+        window.localStorage.setItem(HF_KEY_STORAGE, key)
+      } else {
+        window.localStorage.removeItem(HF_KEY_STORAGE)
+      }
     }
-  }, [apiKey])
+    onApiKeyChange?.(key)
+  }, [form.values.hf_api_key, onApiKeyChange])
 
-  useEffect(() => {
-    onApiKeyChange?.(apiKey)
-  }, [apiKey, onApiKeyChange])
+  const selectedId = useMemo(() => String(form.values.knowledge_base_id ?? ''), [form.values.knowledge_base_id])
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleSubmit() {
     setError(null)
     setResponse(null)
+    const apiKey = String(form.values.hf_api_key ?? '')
     if (!apiKey) {
       setError('Provide your Hugging Face API key to run inference')
       return
     }
+    const prompt = String(form.values.prompt ?? '')
     const trimmedPrompt = prompt.trim()
     if (!trimmedPrompt) {
       setError('Enter a prompt')
       return
     }
     let parsedParameters: Record<string, unknown> | undefined
-    if (parameters.trim()) {
+    const paramsRaw = String(form.values.parameters ?? '').trim()
+    if (paramsRaw) {
       try {
-        parsedParameters = JSON.parse(parameters)
+        parsedParameters = JSON.parse(paramsRaw)
       } catch (err) {
         setError(`Parameters must be valid JSON: ${(err as Error).message}`)
         return
@@ -75,13 +195,13 @@ export function InferencePlayground({
     try {
       const result = await runInference({
         hf_api_key: apiKey,
-        model,
+        model: String(form.values.model ?? ''),
         prompt: trimmedPrompt,
-        system_prompt: systemPrompt || undefined,
+        system_prompt: String(form.values.system_prompt ?? '') || undefined,
         knowledge_base_id: selectedId || undefined,
-        top_k: topK,
+        top_k: Number(form.values.top_k ?? 4),
         parameters: parsedParameters,
-        context_template: contextTemplate || undefined,
+        context_template: String(form.values.context_template ?? '') || undefined,
       })
       setResponse(result)
     } catch (err) {
@@ -91,9 +211,32 @@ export function InferencePlayground({
     }
   }
 
-  function handleSelectChange(event: FormEvent<HTMLSelectElement>) {
-    const value = event.currentTarget.value
-    onKnowledgeBaseChange?.(value || null)
+  useEffect(() => {
+    onKnowledgeBaseChange?.(selectedId || null)
+  }, [selectedId, onKnowledgeBaseChange])
+
+  function handleFieldChange(fieldId: string, value: unknown) {
+    setForm((prev) => updateFlowForm(prev, { [fieldId]: value }))
+  }
+
+  function renderDescription(field: FlowFormFieldDefinition) {
+    if (field.id === 'hf_api_key') {
+      return 'Your key stays in your browser and is sent directly to the Flowport backend.'
+    }
+    if (field.id === 'model') {
+      return 'Any public or private Hugging Face model that your token can access.'
+    }
+    if (field.id === 'knowledge_base_id') {
+      return knowledgeError
+        ? knowledgeError
+        : loadingKnowledge
+          ? 'Loading knowledge bases…'
+          : 'Attach a knowledge base managed in Flowknow to inject relevant context.'
+    }
+    if (field.id === 'context_template') {
+      return "Use '{context}' and '{prompt}' placeholders to craft the final message."
+    }
+    return undefined
   }
 
   return (
@@ -115,115 +258,18 @@ export function InferencePlayground({
         </a>
       </header>
 
-      <form className="mt-6 grid gap-5" onSubmit={handleSubmit}>
-        <div className="grid gap-5 md:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-slate-300">Hugging Face API key</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="hf_xxxxx"
-              className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-              required
-            />
-            <p className="text-xs text-slate-400">Your key stays in your browser and is sent directly to the Flowport backend.</p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-slate-300">Model name</label>
-            <input
-              type="text"
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-              placeholder="mistralai/Mistral-7B-Instruct-v0.2"
-              required
-            />
-            <p className="text-xs text-slate-400">Any public or private Hugging Face model that your token can access.</p>
-          </div>
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-slate-300">System prompt</label>
-            <input
-              type="text"
-              value={systemPrompt}
-              onChange={(event) => setSystemPrompt(event.target.value)}
-              className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-              placeholder="Optional system instructions"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-slate-300">Knowledge base</label>
-            <select
-              value={selectedId}
-              onChange={handleSelectChange}
-              className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-            >
-              <option value="">No knowledge base</option>
-              {knowledgeBases.map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  {kb.name} {kb.source === 'prebuilt' ? '(prebuilt)' : ''}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-slate-400">Attach a knowledge base to inject relevant context before inference.</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-slate-300">Prompt</label>
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            className="h-32 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-            required
-          />
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-3">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-slate-300">Top K</label>
-            <input
-              type="number"
-              value={topK}
-              onChange={(event) => setTopK(Number(event.target.value))}
-              min={1}
-              max={20}
-              className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-            />
-          </div>
-          <div className="flex flex-col gap-2 md:col-span-2">
-            <label className="text-sm text-slate-300">Context template</label>
-            <textarea
-              value={contextTemplate}
-              onChange={(event) => setContextTemplate(event.target.value)}
-              className="h-24 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-            />
-            <p className="text-xs text-slate-400">Use `{'{context}'}` and `{'{prompt}'}` placeholders to craft the final message.</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-slate-300">Model parameters (JSON)</label>
-          <textarea
-            value={parameters}
-            onChange={(event) => setParameters(event.target.value)}
-            placeholder='{"max_new_tokens": 512}'
-            className="h-24 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white focus:border-brand-400 focus:outline-none"
-          />
-        </div>
-
+      <div className="mt-6 grid gap-6">
+        <FlowFormRenderer form={form} onChange={handleFieldChange} renderFieldDescription={renderDescription} />
         <button
-          type="submit"
+          type="button"
+          onClick={handleSubmit}
           disabled={loading}
           className="w-full rounded-lg bg-brand-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? 'Running inference…' : 'Run inference'}
         </button>
         {error && <p className="text-sm text-red-400">{error}</p>}
-      </form>
+      </div>
 
       {response && (
         <div className="mt-8 grid gap-6">
