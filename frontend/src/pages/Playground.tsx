@@ -1,6 +1,6 @@
 import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage, InferenceRequestBody, InferenceResponse, KnowledgeBaseSummary, Provider } from '../lib/api'
-import { listKnowledgeBases, runInference } from '../lib/api'
+import { getKnowledgeBaseAttachments, listKnowledgeBases, runInference } from '../lib/api'
 
 type SavedModel = {
   id: string
@@ -201,6 +201,9 @@ function useLockedViewport() {
     const previousMainPadding = mainElement?.style.padding ?? ''
     const previousMainHeight = mainElement?.style.height ?? ''
     const previousMainOverflow = mainElement?.style.overflow ?? ''
+    const previousMainDisplay = mainElement?.style.display ?? ''
+    const previousMainFlexDirection = mainElement?.style.flexDirection ?? ''
+    const previousMainAlignItems = mainElement?.style.alignItems ?? ''
 
     const applySizing = () => {
       if (!mainElement) return
@@ -210,6 +213,9 @@ function useLockedViewport() {
       mainElement.style.padding = '0'
       mainElement.style.height = `${height}px`
       mainElement.style.overflow = 'hidden'
+      mainElement.style.display = 'flex'
+      mainElement.style.flexDirection = 'column'
+      mainElement.style.alignItems = 'stretch'
     }
 
     html.style.overflow = 'hidden'
@@ -225,6 +231,9 @@ function useLockedViewport() {
         mainElement.style.padding = previousMainPadding
         mainElement.style.height = previousMainHeight
         mainElement.style.overflow = previousMainOverflow
+        mainElement.style.display = previousMainDisplay
+        mainElement.style.flexDirection = previousMainFlexDirection
+        mainElement.style.alignItems = previousMainAlignItems
       }
     }
   }, [])
@@ -436,13 +445,20 @@ export default function Playground() {
       }
     }
 
+    const attachedIds = currentModel.knowledgeBaseIds.filter((id) => knowledgeBases.some((kb) => kb.id === id))
+    const attachmentCandidates = await getKnowledgeBaseAttachments(attachedIds)
+    const knowledgeAttachments = attachmentCandidates
+      .map((kb) => ({
+        ...kb,
+        documents: kb.documents.filter((document) => document.chunks.length > 0),
+      }))
+      .filter((kb) => kb.documents.length > 0)
+
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: trimmed }]
     setMessages(nextMessages)
     setInputValue('')
     setIsSending(true)
     setError(null)
-
-    const attachedIds = currentModel.knowledgeBaseIds.filter((id) => knowledgeBases.some((kb) => kb.id === id))
 
     const body: InferenceRequestBody = {
       provider: currentModel.provider,
@@ -454,11 +470,8 @@ export default function Playground() {
       api_key: apiKey,
     }
 
-    if (attachedIds.length > 0) {
-      body.knowledge_base_id = attachedIds[0]
-      if (attachedIds.length > 1) {
-        body.knowledge_base_ids = attachedIds
-      }
+    if (knowledgeAttachments.length > 0) {
+      body.knowledge_bases = knowledgeAttachments
       body.top_k = DEFAULT_TOP_K
       body.context_template = CONTEXT_TEMPLATE_DEFAULT
     }
@@ -696,7 +709,7 @@ export default function Playground() {
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowport</span>
           </div>
         ) : (
-          <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Model configuration</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">

@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .knowledge_base import KnowledgeChunkMatch
+from .knowledge_base import KnowledgeChunkMatch, KnowledgeDocumentChunk
 
 
 class ChatRole(str, Enum):
@@ -36,6 +36,25 @@ class ChatMessage(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+class ProvidedKnowledgeDocument(BaseModel):
+    """Knowledge document supplied directly with an inference request."""
+
+    id: str
+    title: str
+    original_filename: str | None = None
+    media_type: str | None = None
+    chunks: list[KnowledgeDocumentChunk] = Field(default_factory=list)
+
+
+class ProvidedKnowledgeBase(BaseModel):
+    """Knowledge base supplied alongside an inference request."""
+
+    id: str
+    name: str
+    description: str | None = None
+    documents: list[ProvidedKnowledgeDocument] = Field(default_factory=list)
+
+
 class InferenceRequest(BaseModel):
     """Request payload for model inference across providers."""
 
@@ -47,6 +66,7 @@ class InferenceRequest(BaseModel):
     messages: list[ChatMessage] | None = None
     system_prompt: str | None = None
     knowledge_base_id: str | None = None
+    knowledge_bases: list[ProvidedKnowledgeBase] | None = None
     top_k: int | None = Field(default=None, ge=1, le=20)
     parameters: dict[str, Any] | None = None
     context_template: str | None = Field(

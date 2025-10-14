@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -17,6 +18,7 @@ from ..models.inference import (
     InferenceRequest,
     InferenceResponse,
     ProviderName,
+    ProvidedKnowledgeBase,
 )
 from ..models.knowledge_base import KnowledgeChunkMatch
 from ..services.gemini import GeminiClient
@@ -35,6 +37,73 @@ def _render_context(matches: list[KnowledgeChunkMatch]) -> str:
         title = match.document_title or match.document_id
         lines.append(f"[{title}] (score={match.score:.3f})\n{match.content}")
     return "\n\n".join(lines)
+
+
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+def _tokenize_text(value: str) -> list[str]:
+    """Tokenise the given value into lowercase alphanumeric tokens."""
+
+    return _TOKEN_PATTERN.findall(value.lower())
+
+
+def _score_provided_chunk(query: str, content: str) -> float:
+    """Compute a lightweight relevance score between the query and a chunk."""
+
+    query_text = query.lower().strip()
+    chunk_text = content.lower().strip()
+    if not query_text or not chunk_text:
+        return 0.0
+
+    query_tokens = _tokenize_text(query_text)
+    chunk_tokens = _tokenize_text(chunk_text)
+    if not query_tokens or not chunk_tokens:
+        return 0.0
+
+    query_set = set(query_tokens)
+    chunk_set = set(chunk_tokens)
+    shared = sum(1 for token in query_set if token in chunk_set)
+    if shared == 0:
+        substring_bonus = 1.0 if query_text in chunk_text else 0.0
+        return substring_bonus * 0.6
+
+    token_coverage = shared / len(query_set)
+    chunk_coverage = shared / len(chunk_set)
+    substring_bonus = 1.0 if query_text in chunk_text else 0.0
+
+    return substring_bonus * 0.6 + token_coverage * 0.3 + chunk_coverage * 0.1
+
+
+def _query_provided_knowledge(
+    bases: Sequence[ProvidedKnowledgeBase],
+    query: str,
+    top_k: int,
+) -> list[KnowledgeChunkMatch]:
+    """Perform naive retrieval over knowledge supplied within the request."""
+
+    scored: list[tuple[float, KnowledgeChunkMatch]] = []
+    for base in bases:
+        for document in base.documents:
+            for chunk in document.chunks:
+                score = _score_provided_chunk(query, chunk.content)
+                if score <= 0:
+                    continue
+                scored.append(
+                    (
+                        score,
+                        KnowledgeChunkMatch(
+                            chunk_id=chunk.id,
+                            score=score,
+                            content=chunk.content,
+                            document_id=document.id,
+                            document_title=document.title,
+                        ),
+                    )
+                )
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [match for _, match in scored[:top_k]]
 
 
 @router.post("", response_model=InferenceResponse)
@@ -60,6 +129,7 @@ async def run_inference(
 
     user_message = messages[last_user_index]
     question = user_message.content
+    provided_knowledge = payload.knowledge_bases or []
 
     if payload.knowledge_base_id:
         top_k = payload.top_k or settings.default_top_k
@@ -70,6 +140,20 @@ async def run_inference(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         matches = retrieval.matches
+        if matches:
+            context_text = _render_context(matches)
+            template = payload.context_template or "{prompt}"
+            try:
+                enriched = template.format(context=context_text, prompt=question)
+            except KeyError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid context template missing key: {exc.args[0]}",
+                ) from exc
+            messages[last_user_index] = ChatMessage(role=ChatRole.user, content=enriched)
+    elif provided_knowledge:
+        top_k = payload.top_k or settings.default_top_k
+        matches = _query_provided_knowledge(provided_knowledge, question, top_k)
         if matches:
             context_text = _render_context(matches)
             template = payload.context_template or "{prompt}"
